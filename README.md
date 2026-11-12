@@ -2,13 +2,19 @@
 
 把提醒、专注和 AI 问答放进一只常驻桌面的宠物里。面向长时间学习、办公的人，探索更轻量、有反馈的效率工具。
 
-[下载 Windows 体验版](https://github.com/FUllllll910/MyPets/releases) · [实际应用演示](docs/demo/mypets-demo.webm) · [产品思考与实现](docs/MyPets-Portfolio.md)
+[下载 Windows 体验版](https://github.com/FUllllll910/MyPets/releases) · [实际应用演示](docs/demo/mypets-author-demo.mp4) · [产品思考与实现](docs/MyPets-Portfolio.md)
 
 ![MyPets 实际运行界面](docs/demo/screen-0.png)
 
 ## 先看演示
 
-[点击观看真实 Electron 应用录屏（WebM）](https://github.com/FUllllll910/MyPets/raw/refs/heads/main/docs/demo/mypets-demo.webm)。录屏依次展示主页、专注、角色、统计和设置，使用独立演示数据；不是设计稿，不包含虚构的模型回答。GitHub 若未内嵌播放，可下载后用浏览器打开。
+以下为项目作者亲自录制的 MyPets 实际使用演示。点击下方封面或视频链接观看。
+
+[![点击观看 MyPets 作者录制演示](docs/demo/screen-0.png)](https://github.com/FUllllll910/MyPets/blob/main/docs/demo/mypets-author-demo.mp4)
+
+**[▶ 观看演示视频（MP4）](https://github.com/FUllllll910/MyPets/blob/main/docs/demo/mypets-author-demo.mp4)** · [下载原视频](https://github.com/FUllllll910/MyPets/raw/refs/heads/main/docs/demo/mypets-author-demo.mp4)
+
+封面为应用截图。若 GitHub 未显示播放器，可点击「下载原视频」在本地播放。
 
 ## 项目定位与贡献边界
 
