@@ -844,20 +844,16 @@ function clampBoundsToWorkArea(bounds: Electron.Rectangle): Electron.Rectangle {
 
 function initialPetBounds(): Electron.Rectangle {
   const workArea = screen.getPrimaryDisplay().workArea;
-  const stored = store.get("petPosition");
   const size = petWindowSize();
-  const fallback = {
-    ...size,
-    x: Math.round(workArea.x + workArea.width / 2 - size.width / 2),
-    y: workArea.y + workArea.height - size.height
-  };
-
-  if (!stored) return fallback;
-  const compactSize = compactPetWindowSize();
+  const margin = 24;
+  const maxX = Math.max(workArea.x + margin, workArea.x + workArea.width - size.width - margin);
+  const maxY = Math.max(workArea.y + margin, workArea.y + workArea.height - size.height - margin);
+  const randomX = Math.round(workArea.x + margin + Math.random() * Math.max(0, maxX - workArea.x - margin));
+  const randomY = Math.round(workArea.y + margin + Math.random() * Math.max(0, maxY - workArea.y - margin));
   return clampBoundsToWorkArea({
-    ...fallback,
-    x: Math.round(stored.x + compactSize.width / 2 - size.width / 2),
-    y: stored.y + compactSize.height - size.height
+    ...size,
+    x: randomX,
+    y: randomY
   });
 }
 
@@ -928,7 +924,7 @@ function createPetWindow(): void {
     transparent: true,
     frame: false,
     resizable: false,
-    movable: false,
+    movable: true,
     show: false,
     skipTaskbar: true,
     hasShadow: false,
@@ -984,9 +980,8 @@ function createSettingsWindow(): void {
     height: SETTINGS_WINDOW.height,
     title: `${APP_NAME} ${text().menu.settings}`,
     resizable: true,
-    minWidth: SETTINGS_WINDOW.width,
-    maxWidth: SETTINGS_WINDOW.width,
-    minHeight: 400,
+    minWidth: SETTINGS_WINDOW.minWidth,
+    minHeight: SETTINGS_WINDOW.minHeight,
     show: false,
     icon: runtimeAssetPath("tray-icon.png"),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#14110f" : "#ffffff",
@@ -4226,6 +4221,13 @@ function registerIpc(): void {
   ipcMain.on("settings:update", (_event, partial: Partial<Settings>) => {
     setSettings({ ...getSettings(), ...partial });
   });
+  ipcMain.on("settings:minimize", () => settingsWindow?.minimize());
+  ipcMain.on("settings:toggle-maximize", () => {
+    if (!settingsWindow || settingsWindow.isDestroyed()) return;
+    if (settingsWindow.isMaximized()) settingsWindow.unmaximize();
+    else settingsWindow.maximize();
+  });
+  ipcMain.on("settings:close", () => settingsWindow?.close());
   ipcMain.on("demo:trigger", (_event, trigger: DemoTrigger) => triggerDemo(trigger));
   ipcMain.on("focus:start", startFocusMode);
   ipcMain.on("focus:stop", () => stopFocusMode(false));

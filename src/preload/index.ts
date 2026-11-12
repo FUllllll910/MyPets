@@ -43,6 +43,9 @@ const api = {
   openExternal: (url: string): void => ipcRenderer.send("app:open-external", url),
   updateSettings: (settings: Partial<Settings>): void =>
     ipcRenderer.send("settings:update", settings),
+  minimizeSettings: (): void => ipcRenderer.send("settings:minimize"),
+  toggleMaximizeSettings: (): void => ipcRenderer.send("settings:toggle-maximize"),
+  closeSettings: (): void => ipcRenderer.send("settings:close"),
   triggerDemo: (trigger: DemoTrigger): void => ipcRenderer.send("demo:trigger", trigger),
   isPackaged: !process.defaultApp,
   assetUrl: (relativePath: string): string => {

@@ -1,28 +1,7 @@
-# Asset Licensing
+# 素材与代码许可
 
-MyPets separates source code licensing from pet animation asset licensing.
+源代码采用 MIT，见 LICENSE；项目基于 PawPause 开源基础迭代。
 
-## Source Code
+`petdex_pets/`、`src/renderer/public/`、`docs/` 中的宠物动画、角色图片和衍生截图不自动适用 MIT。部分形象涉及第三方角色，当前未附可证明商业再分发授权的文件。此仓库用于个人学习和作品展示；商用或进一步分发前应联系权利人确认授权，或替换为原创/明确授权素材。
 
-The application source code is licensed under the MIT License. See `LICENSE`.
-
-## Bundled Runtime Assets
-
-Files under `pet_assets/` are bundled runtime assets used by the app's built-in pet appearances.
-
-These assets are not automatically covered by the MIT License unless a specific asset source explicitly grants MIT-compatible rights. Before redistributing, remixing, or using a pet asset outside this project, verify the original asset source and license.
-
-Current built-in appearances:
-
-- `pet_assets/閲戞瘺 puppy/`
-- `pet_assets/绾挎潯灏忕嫍/`
-
-## Raw Working Assets
-
-Raw source materials live under `_raw_assets/` locally and are intentionally excluded from git.
-
-The raw asset folder may contain generated experiments, upstream packs, original videos, intermediate exports, or other large files. Do not commit `_raw_assets/` to the public repository.
-
-## Contributing Assets
-
-When contributing a new pet appearance or replacing GIFs, include clear source and license information in the pull request. Prefer assets that can be redistributed with the project, and avoid adding files whose rights are unclear.
+原有素材说明中的 `pet_assets/` 路径不适用于当前版本，实际路径以上述目录为准。

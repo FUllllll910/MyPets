@@ -22,10 +22,20 @@ import { useNow, useSnapshot } from "../hooks";
 
 type SettingsCopy = ReturnType<typeof i18n>["settings"];
 type StatsRange = "day" | "month" | "all";
-type PrefsPage = "stats" | "pets" | "reminders" | "settings";
+type PrefsPage = "home" | "focus" | "pets" | "stats" | "settings";
 type StatsMetric = "breaksTaken" | "watersLogged" | "focusMinutes" | "focusWarnings";
 type StatsTrendPoint = TodayStats & {
   label: string;
+};
+type StudioChatMessage = {
+  role: "user" | "pet";
+  text: string;
+  ts: string;
+};
+type StudioTask = {
+  id: string;
+  title: string;
+  done: boolean;
 };
 type FocusHeatmapDay = {
   date: string;
@@ -46,15 +56,107 @@ type MonthMarker = {
 const PETDEX_URL = "https://petdex.crafter.run/";
 const HEATMAP_WEEK_COUNT = 53;
 const CUSTOM_GIF_STATES: Array<{ state: PetdexStateId; previewState: PetState; label: string; hint: string }> = [
-  { state: "idle", previewState: "idle", label: "待机", hint: "桌宠默认站立或呼吸状态。" },
-  { state: "running-right", previewState: "runningRight", label: "向右移动", hint: "桌宠向右移动时展示。" },
-  { state: "running-left", previewState: "runningLeft", label: "向左移动", hint: "桌宠向左移动时展示。" },
-  { state: "waving", previewState: "waving", label: "打招呼", hint: "用于欢迎、完成任务等反馈。" },
-  { state: "jumping", previewState: "jumping", label: "开心跳跃", hint: "用于正向反馈或开心互动。" },
-  { state: "failed", previewState: "sad", label: "难过", hint: "用于请求失败或异常情况。" },
-  { state: "waiting", previewState: "thinking", label: "思考中", hint: "用于等待、聊天或 AI 回复中。" },
-  { state: "running", previewState: "breakRunning", label: "休息倒计时", hint: "用于强制休息或倒计时场景。" },
-  { state: "review", previewState: "reviewing", label: "待确认", hint: "用于需要用户复核的状态。" }
+  { state: "idle", previewState: "idle", label: "\u5f85\u673a", hint: "\u684c\u5ba0\u9ed8\u8ba4\u7ad9\u7acb\u6216\u547c\u5438\u72b6\u6001\u3002" },
+  { state: "running-right", previewState: "runningRight", label: "\u5411\u53f3\u79fb\u52a8", hint: "\u684c\u5ba0\u5411\u53f3\u79fb\u52a8\u65f6\u5c55\u793a\u3002" },
+  { state: "running-left", previewState: "runningLeft", label: "\u5411\u5de6\u79fb\u52a8", hint: "\u684c\u5ba0\u5411\u5de6\u79fb\u52a8\u65f6\u5c55\u793a\u3002" },
+  { state: "waving", previewState: "waving", label: "\u6253\u62db\u547c", hint: "\u7528\u4e8e\u6b22\u8fce\u3001\u5b8c\u6210\u4efb\u52a1\u7b49\u53cd\u9988\u3002" },
+  { state: "jumping", previewState: "jumping", label: "\u5f00\u5fc3\u8df3\u8dc3", hint: "\u7528\u4e8e\u6b63\u5411\u53cd\u9988\u6216\u5f00\u5fc3\u4e92\u52a8\u3002" },
+  { state: "failed", previewState: "sad", label: "\u96be\u8fc7", hint: "\u7528\u4e8e\u8bf7\u6c42\u5931\u8d25\u6216\u5f02\u5e38\u60c5\u51b5\u3002" },
+  { state: "waiting", previewState: "thinking", label: "\u601d\u8003\u4e2d", hint: "\u7528\u4e8e\u7b49\u5f85\u3001\u804a\u5929\u6216 AI \u56de\u590d\u4e2d\u3002" },
+  { state: "running", previewState: "breakRunning", label: "\u4f11\u606f\u5012\u8ba1\u65f6", hint: "\u7528\u4e8e\u5f3a\u5236\u4f11\u606f\u6216\u5012\u8ba1\u65f6\u573a\u666f\u3002" },
+  { state: "review", previewState: "reviewing", label: "\u5f85\u786e\u8ba4", hint: "\u7528\u4e8e\u9700\u8981\u7528\u6237\u590d\u6838\u7684\u72b6\u6001\u3002" }
+];
+
+const PREF_NAV: Array<{ page: PrefsPage; label: string; icon: string; note: string }> = [
+  { page: "home", label: "\u4e3b\u9875", icon: "\u2302", note: "AI \u804a\u5929\u4e0e\u4efb\u52a1" },
+  { page: "focus", label: "\u4e13\u6ce8", icon: "\u25cc", note: "\u8ba1\u65f6\u4e0e\u63d0\u9192" },
+  { page: "pets", label: "\u89d2\u8272", icon: "\u2606", note: "\u5f62\u8c61\u4e0e\u52a8\u4f5c" },
+  { page: "stats", label: "\u7edf\u8ba1", icon: "\u2225", note: "\u6570\u636e\u770b\u677f" },
+  { page: "settings", label: "\u8bbe\u7f6e", icon: "\u2699", note: "\u504f\u597d\u4e0e\u8bca\u65ad" }
+];
+
+const PRODUCT_BRIDGES = [
+  { label: "AI \u804a\u5929", value: "DeepSeek", detail: "\u4e09\u51fb\u684c\u5ba0\u5373\u53ef\u95ee\u7b54" },
+  { label: "\u89d2\u8272\u5e93", value: "Petdex", detail: "\u652f\u6301\u5bfc\u5165\u4e0e\u81ea\u5b9a\u4e49 GIF" },
+  { label: "\u4e60\u60ef\u5b88\u62a4", value: "Focus", detail: "\u4f11\u606f\u3001\u559d\u6c34\u3001\u4e13\u6ce8\u4e00\u8d77\u7ba1" }
+];
+
+const PETDEX_RECOMMENDATIONS = [
+  { name: "Chiikawa style", tone: "\u52aa\u529b\u7cfb", query: "chiikawa", color: "#f5a623" },
+  { name: "Usagi style", tone: "\u6d3b\u529b\u7cfb", query: "usagi", color: "#f87eb5" },
+  { name: "Hachiware style", tone: "\u966a\u4f34\u7cfb", query: "hachiware", color: "#7ab8f5" },
+  { name: "Kuromi style", tone: "\u4e2a\u6027\u7cfb", query: "kuromi", color: "#9b59b6" },
+  { name: "Cinnamoroll style", tone: "\u6cbb\u6108\u7cfb", query: "cinnamoroll", color: "#6bbde8" },
+  { name: "Original cozy pets", tone: "\u539f\u521b\u7cfb", query: "cozy cheerful", color: "#5ac8a0" }
+];
+
+const FIGMA_CHARACTERS = [
+  {
+    id: "usagi",
+    name: "\u4e4c\u8428\u5947",
+    title: "Usagi",
+    imageUrl: "/pets/usagi.webp",
+    color: "#F87EB5",
+    bg: "#FFF0F7",
+    tag: "\u6e29\u67d4\u7cfb",
+    description: "\u6765\u81ea Figma Make \u7684\u4eba\u6c14\u767d\u5154\u89d2\u8272\u7075\u611f\uff0c\u9002\u5408\u67d4\u548c\u966a\u4f34\u578b\u684c\u5ba0\u3002",
+    query: "usagi"
+  },
+  {
+    id: "kirby",
+    name: "\u661f\u4e4b\u5361\u6bd4",
+    title: "Kirby",
+    imageUrl: "/pets/kirby.png",
+    color: "#FF8FAB",
+    bg: "#FFF0F4",
+    tag: "\u5143\u6c14\u7cfb",
+    description: "\u7c89\u8272\u5706\u6eda\u6eda\u7684\u5192\u9669\u7075\u611f\uff0c\u7528\u4e8e\u5f3a\u5316\u65b0\u7248 Figma \u89d2\u8272\u5e93\u7684\u89c6\u89c9\u8bed\u8a00\u3002",
+    query: "kirby"
+  },
+  {
+    id: "cinnamoroll",
+    name: "\u7389\u6842\u72d7",
+    title: "Cinnamoroll",
+    imageUrl: "/pets/cinnamoroll.webp",
+    color: "#7AB8F5",
+    bg: "#EFF7FF",
+    tag: "\u6cbb\u6108\u7cfb",
+    description: "\u6d45\u84dd\u6cbb\u6108\u98ce\u89d2\u8272\u7075\u611f\uff0c\u9002\u5408\u559d\u6c34\u3001\u4f11\u606f\u548c\u60c5\u7eea\u5b89\u629a\u573a\u666f\u3002",
+    query: "cinnamoroll"
+  },
+  {
+    id: "kuromi",
+    name: "\u5e93\u6d1b\u7c73",
+    title: "Kuromi",
+    imageUrl: "/pets/kuromi.webp",
+    color: "#9B59B6",
+    bg: "#F5F0FF",
+    tag: "\u4e2a\u6027\u7cfb",
+    description: "\u504f\u4e2a\u6027\u7684\u7d2b\u8272\u89d2\u8272\u7075\u611f\uff0c\u548c\u4e13\u6ce8\u72b6\u6001\u7684\u7d2b\u8272\u63a7\u4ef6\u4fdd\u6301\u4e00\u81f4\u3002",
+    query: "kuromi"
+  },
+  {
+    id: "chiikawa",
+    name: "\u5409\u4f0a\u5361\u54c7",
+    title: "Chiikawa",
+    imageUrl: "/pets/chiikawa.webp",
+    color: "#F5A623",
+    bg: "#FFFBEB",
+    tag: "\u52aa\u529b\u7cfb",
+    description: "\u5c0f\u5c0f\u7684\u52aa\u529b\u7cfb\u89d2\u8272\u7075\u611f\uff0c\u9002\u5408\u4efb\u52a1\u5b8c\u6210\u548c\u8fde\u7eed\u6253\u5361\u53cd\u9988\u3002",
+    query: "chiikawa"
+  },
+  {
+    id: "nezuko",
+    name: "\u7962\u8c46\u5b50",
+    title: "Nezuko",
+    imageUrl: "/pets/nezuko.webp",
+    color: "#FF6B9D",
+    bg: "#FFF0F6",
+    tag: "\u5b88\u62a4\u7cfb",
+    description: "\u5b88\u62a4\u578b\u89d2\u8272\u7075\u611f\uff0c\u4e0e\u5206\u5fc3\u68c0\u6d4b\u548c\u4e13\u6ce8\u5b88\u62a4\u529f\u80fd\u547c\u5e94\u3002",
+    query: "nezuko"
+  }
 ];
 
 function Row({
@@ -282,7 +384,7 @@ function ChipsControl({
               aria-label={labels.removeListItem(entry)}
               onClick={() => onChange(value.filter((item) => item !== entry))}
             >
-              脳
+              &times;
             </button>
           </span>
         ))}
@@ -693,11 +795,22 @@ export function SettingsView(): JSX.Element {
   const [draft, setDraft] = useState(settings);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [statsRange, setStatsRange] = useState<StatsRange>("day");
-  const [page, setPage] = useState<PrefsPage>("stats");
+  const [page, setPage] = useState<PrefsPage>("home");
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [newReminderTitle, setNewReminderTitle] = useState("");
   const [newReminderTime, setNewReminderTime] = useState("11:30");
+  const [studioChatDraft, setStudioChatDraft] = useState("");
+  const [studioChatSending, setStudioChatSending] = useState(false);
+  const [studioChatMessages, setStudioChatMessages] = useState<StudioChatMessage[]>([
+    {
+      role: "pet",
+      text: "\u55e8~\u6211\u662f\u4f60\u7684\u684c\u9762\u5c0f\u4f19\u4f34\uff01\u4eca\u5929\u60f3\u505a\u4ec0\u4e48\u5462\uff1f\u6709\u4efb\u52a1\u8981\u4e13\u6ce8\uff0c\u8fd8\u662f\u60f3\u804a\u5929\u90fd\u884c\u54e6 \uD83D\uDC3E",
+      ts: "09:00"
+    }
+  ]);
+  const [studioTasks, setStudioTasks] = useState<StudioTask[]>([]);
+  const [studioTaskDraft, setStudioTaskDraft] = useState("");
   const now = useNow();
   const savedSettingsKey = JSON.stringify(settings);
   const language = resolveLanguage(draft.language);
@@ -828,624 +941,308 @@ export function SettingsView(): JSX.Element {
     });
   }
 
+  function chatTimestamp(): string {
+    return new Intl.DateTimeFormat(localeFor(language), {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(new Date());
+  }
+
+  async function sendStudioChat(text = studioChatDraft): Promise<void> {
+    const message = text.trim();
+    if (!message || studioChatSending) return;
+    setStudioChatDraft("");
+    setStudioChatMessages((current) => [...current, { role: "user", text: message, ts: chatTimestamp() }]);
+    setStudioChatSending(true);
+    const result = await window.mypets.petGptChatMessage(message);
+    setStudioChatMessages((current) => [
+      ...current,
+      {
+        role: "pet",
+        text: result.ok ? result.message : `\u6211\u8fd9\u8fb9\u8fde\u4e0d\u4e0a\u804a\u5929\u670d\u52a1\uff1a${result.error}`,
+        ts: chatTimestamp()
+      }
+    ]);
+    setStudioChatSending(false);
+  }
+
+  function addStudioTask(): void {
+    const title = studioTaskDraft.trim();
+    if (!title) return;
+    setStudioTasks((current) => [...current, { id: `${Date.now()}`, title, done: false }]);
+    setStudioTaskDraft("");
+  }
+
+  function toggleStudioTask(taskId: string): void {
+    setStudioTasks((current) =>
+      current.map((task) => (task.id === taskId ? { ...task, done: !task.done } : task))
+    );
+  }
+
+  function removeStudioTask(taskId: string): void {
+    setStudioTasks((current) => current.filter((task) => task.id !== taskId));
+  }
+
+  function openProductBridge(bridge: (typeof PRODUCT_BRIDGES)[number]): void {
+    if (bridge.value === "DeepSeek") {
+      window.mypets.petChatRequested();
+      return;
+    }
+    if (bridge.value === "Petdex") {
+      setPage("pets");
+      return;
+    }
+    setPage("focus");
+  }
+
+  function startImmersiveFocus(): void {
+    if (!snapshot.focusActive) window.mypets.startFocus();
+    window.mypets.closeSettings();
+  }
+
+  function toggleCompletionSound(): void {
+    updateDraft({ agentCompletionSoundEnabled: !draft.agentCompletionSoundEnabled });
+  }
+
   const selectablePets = useMemo(() => allPets(draft.installedPets), [draft.installedPets]);
-  const petOptions = selectablePets.map((pet) => ({
-    value: pet.slug,
-    label: pet.manifest.displayName
-  }));
+  const activePet = selectablePets.find((pet) => pet.slug === draft.selectedPetId) ?? selectablePets[0];
+  const activePetAsset = getSelectedPetAsset(
+    activePet?.slug ?? draft.selectedPetId,
+    draft.installedPets,
+    "idle",
+    draft.customGifPet
+  );
+  const pageTitle = PREF_NAV.find((item) => item.page === page)?.label ?? labels.title;
+  const petName = activePet?.manifest.displayName ?? "\u68c9\u82b1\u7cd6";
+  const focusTotalSeconds = Math.max(1, draft.focusDurationMinutes * 60);
+  const focusSecondsLeft =
+    snapshot.focusActive && snapshot.timers.focusEndsAt
+      ? Math.max(0, Math.round((snapshot.timers.focusEndsAt - now) / 1000))
+      : focusTotalSeconds;
+  const focusClock = `${String(Math.floor(focusSecondsLeft / 60)).padStart(2, "0")}:${String(
+    focusSecondsLeft % 60
+  ).padStart(2, "0")}`;
+  const focusProgress = snapshot.focusActive
+    ? Math.min(1, Math.max(0, 1 - focusSecondsLeft / focusTotalSeconds))
+    : 0;
+  const focusPercent = Math.min(100, Math.round((statsForRange.focusMinutes / Math.max(1, 180)) * 100));
+  const waterPercent = Math.min(100, Math.round((statsForRange.watersLogged / Math.max(1, 8)) * 100));
+  const breakPercent = Math.min(100, Math.round((statsForRange.breaksTaken * 20 / Math.max(1, 60)) * 100));
+  const petMood = snapshot.focusActive ? "\u4e13\u6ce8\u4e2d" : "\u5f85\u673a\u4e2d";
+  const focusCycles = Math.min(4, Math.floor(stats.focusMinutes / Math.max(1, draft.focusDurationMinutes)));
 
   return (
-    <main className="prefs" dir={language === "ar" ? "rtl" : "ltr"}>
-      <header className="prefs__topbar">
-        <SegmentedControl
-          value={page === "settings" ? null : page}
-          options={[
-            { value: "stats", label: labels.statsHeading },
-            { value: "pets", label: labels.petAppearance },
-            { value: "reminders", label: labels.reminderPageTitle }
-          ]}
-          onChange={(value) => setPage(value)}
-        />
-        <button
-          type="button"
-          className={`pref-button${page === "settings" ? " is-primary" : ""}`}
-          onClick={() => setPage("settings")}
-        >
-          {labels.title}
-        </button>
-      </header>
-      {page === "settings" ? <h1 className="prefs__page-title">{labels.title}</h1> : null}
-      {page === "reminders" ? <h1 className="prefs__page-title">{labels.reminderPageTitle}</h1> : null}
-
-      {page === "stats" ? (
-        <section className="prefs__stats-panel" aria-label={labels.statsHeading}>
-          <div className="prefs__stats-head">
-            <SegmentedControl
-              value={statsRange}
-              options={[
-                { value: "day", label: labels.statsRangeDay },
-                { value: "month", label: labels.statsRangeMonth },
-                { value: "all", label: labels.statsRangeAll }
-              ]}
-              onChange={setStatsRange}
-            />
-          </div>
-          <div className="prefs__stats">
-            <StatCard label={labels.breaks} value={statsForRange.breaksTaken} unit={labels.countUnit} />
-            <StatCard label={labels.waters} value={statsForRange.watersLogged} unit={labels.countUnit} />
-            <StatCard label={labels.focusMin} value={statsForRange.focusMinutes} unit={labels.minuteUnit} />
-            <StatCard label={labels.warnings} value={statsForRange.focusWarnings} unit={labels.countUnit} />
-          </div>
-          <div className="prefs__trends">
-            <StatsLineChart
-              title={labels.breaks}
-              metric="breaksTaken"
-              points={trendPoints}
-              unit={labels.countUnit}
-            />
-            <StatsLineChart
-              title={labels.waters}
-              metric="watersLogged"
-              points={trendPoints}
-              unit={labels.countUnit}
-            />
-            <StatsLineChart
-              title={labels.focusMin}
-              metric="focusMinutes"
-              points={trendPoints}
-              unit={labels.minuteUnit}
-            />
-            <StatsLineChart
-              title={labels.warnings}
-              metric="focusWarnings"
-              points={trendPoints}
-              unit={labels.countUnit}
-            />
-          </div>
-          <StatsCompanionship
-            days={companionDays}
-            weeks={focusHeatmapWeeks}
-            monthMarkers={monthMarkers}
-            labels={labels}
-            language={language}
-          />
-        </section>
-      ) : null}
-
-      {page === "stats" && !draft.onboardingDismissed ? (
-        <aside className="prefs__welcome">
-          <p>
-            <strong>{labels.welcomeTitle}.</strong> {labels.welcomeCopy}
-          </p>
-          <button
-            type="button"
-            className="text-link"
-            onClick={() => updateDraft({ onboardingDismissed: true })}
-          >
-            {labels.dismissWelcome}
-          </button>
-        </aside>
-      ) : null}
-
-      {page === "pets" ? (
-        <section className="prefs__group">
-          <div className="pref-block pref-block--flush">
-            <div className="pet-picker">
-              {petOptions.map((option) => (
-                <PetCard
-                  key={option.value}
-                  pet={selectablePets.find((pet) => pet.slug === option.value)}
-                  label={option.label}
-                  selected={draft.selectedPetId === option.value}
-                  onSelect={() => updateDraft({ selectedPetId: option.value })}
-                />
-              ))}
-            </div>
-          </div>
-          <Row
-            label={labels.importPet}
-            hint={importStatus ?? labels.importPetHint}
-            control={
-              <button type="button" className="pref-action" onClick={() => void importPet()}>
-                {labels.importPet}
+    <main className="studio-shell" dir={language === "ar" ? "rtl" : "ltr"}>
+      <div className="studio-window studio-window--win">
+        <aside className="studio-sidebar" aria-label="MyPets sections">
+          <div className="studio-sidebar__avatar"><PetAssetPreview asset={activePetAsset} /></div>
+          <nav className="studio-sidebar__nav">
+            {PREF_NAV.map((item) => (
+              <button key={item.page} type="button" className={`studio-nav-item${page === item.page ? " is-active" : ""}`} onClick={() => setPage(item.page)} title={item.note}>
+                <span className="studio-nav-item__icon">{item.icon}</span>
+                <span>{item.label}</span>
               </button>
-            }
-          />
-          <div className="pref-block custom-gif-panel">
-            <div className="custom-gif-panel__head">
-              <div>
-                <span className="pref-block__label">自定义 GIF 形象</span>
-                <p>为不同状态上传不同 GIF，让桌宠在待机、移动、思考、失败等场景里展示对应动作。</p>
-              </div>
-              <ToggleControl
-                checked={draft.customGifPet.enabled}
-                onChange={(enabled) =>
-                  updateDraft({ customGifPet: { ...draft.customGifPet, enabled } })
-                }
-                ariaLabel="启用自定义 GIF 形象"
-              />
+            ))}
+          </nav>
+          <button className="studio-sidebar__bell" type="button" onClick={() => window.mypets.petChatRequested()}>{"\u25cc"}</button>
+        </aside>
+
+        <section className="studio-panel">
+          <header className="studio-titlebar studio-titlebar--win">
+            <div className="studio-app-title">
+              <span className="studio-app-icon"><PetAssetPreview asset={activePetAsset} /></span>
+              <h1>{page === "home" ? "MyPets \u00b7 \u4e3b\u9875" : pageTitle}</h1>
             </div>
-            <div className="custom-gif-grid">
-              {CUSTOM_GIF_STATES.map((entry) => (
-                <CustomGifActionCard
-                  key={entry.state}
-                  entry={entry}
-                  gifPath={draft.customGifPet.gifs[entry.state]}
-                  enabled={draft.customGifPet.enabled}
-                  onImport={() => void importCustomGif(entry.state)}
-                  onRemove={() => removeCustomGif(entry.state)}
-                />
-              ))}
+            <div className="studio-status-pills">
+              <span className="studio-pill studio-pill--pet"><span className="studio-pill__avatar"><PetAssetPreview asset={activePetAsset} /></span>{petName}</span>
+              <span className="studio-pill">{petMood}</span>
             </div>
-          </div>
-          <p className="petdex-link">
-            <a
-              href={PETDEX_URL}
-              onClick={(event) => {
-                event.preventDefault();
-                window.mypets.openExternal(PETDEX_URL);
-              }}
-            >
-              {labels.petdexDownloadCta}
-            </a>
-          </p>
-        </section>
-      ) : null}
-
-      {page === "reminders" ? (
-        <section className="prefs__group prefs__group--first reminder-page">
-          <div className="reminder-composer">
-            <label className="reminder-field reminder-field--title">
-              <span>{labels.reminderTitle}</span>
-              <input
-                type="text"
-                className="reminder-input"
-                value={newReminderTitle}
-                placeholder={labels.reminderTitlePlaceholder}
-                onChange={(event) => setNewReminderTitle(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addCustomReminder();
-                  }
-                }}
-              />
-            </label>
-            <label className="reminder-field">
-              <span>{labels.reminderTime}</span>
-              <input
-                type="time"
-                className="reminder-input reminder-input--time"
-                value={newReminderTime}
-                onChange={(event) => setNewReminderTime(event.target.value)}
-              />
-            </label>
-            <button type="button" className="pref-action reminder-composer__add" onClick={addCustomReminder}>
-              {labels.addReminder}
-            </button>
-          </div>
-
-          {draft.customReminders.length ? (
-            <div className="reminder-list">
-              {draft.customReminders.map((reminder) => (
-                <ReminderCard
-                  key={reminder.id}
-                  reminder={reminder}
-                  labels={labels}
-                  language={language}
-                  now={now}
-                  onChange={(partial) => updateReminder(reminder.id, partial)}
-                  onRemove={() => removeCustomReminder(reminder.id)}
-                />
-              ))}
+            <div className="studio-window-actions" aria-label="Window controls">
+              <button type="button" aria-label="Minimize" onClick={() => window.mypets.minimizeSettings()}>_</button>
+              <button type="button" aria-label="Maximize" onClick={() => window.mypets.toggleMaximizeSettings()}>{"\u25a1"}</button>
+              <button type="button" aria-label="Close" onClick={() => window.mypets.closeSettings()}>{"\u00d7"}</button>
             </div>
-          ) : (
-            <p className="reminder-empty">{labels.emptyReminders}</p>
-          )}
-        </section>
-      ) : null}
+          </header>
 
-      {page === "settings" ? (
-        <>
-          <section className="prefs__group prefs__group--first">
-            <h2 className="prefs__group-title">{labels.language}</h2>
-            <Row
-              label={labels.language}
-              control={
-                <SelectControl
-                  value={language}
-                  options={[...LANGUAGE_OPTIONS]}
-                  onChange={(value) => updateDraft({ language: resolveLanguage(value) })}
-                />
-              }
-            />
-          </section>
+          <div className="studio-content studio-content--scroll">
+            {page === "home" ? (
+              <section className="studio-home">
+                <div className="studio-home__left">
+                  <article className="home-pet-card">
+                    <span className="home-pet-card__badge">{petMood}</span>
+                    <div className="home-pet-card__pet"><PetAssetPreview asset={activePetAsset} /></div>
+                    <h2>{petName}</h2>
+                    <p>{"\u6e29\u67d4\u7cfb"}</p>
+                    <div className="home-pet-card__bubble">{"\u55e8\uff5e\u4eca\u5929\u6253\u7b97\u505a\u70b9\u4ec0\u4e48\u5417\uff1f"}</div>
+                  </article>
+                  <div className="home-actions">
+                    <button type="button" onClick={() => window.mypets.triggerDemo("hydration")}>{"\u2667 \u559d\u6c34"}</button>
+                    <button type="button" onClick={() => window.mypets.triggerDemo("break")}>{"\u25d2 \u4f11\u606f"}</button>
+                  </div>
+                  <div className="home-mini-stats">
+                    <div><span>{"\u2699"}</span><small>{"\u4e13\u6ce8"}</small><strong>{stats.focusMinutes}{"\u5206"}</strong></div>
+                    <div><span>{"\u2667"}</span><small>{"\u559d\u6c34"}</small><strong>{stats.watersLogged}{"\u676f"}</strong></div>
+                    <div><span>{"\u25b2"}</span><small>{"\u8fde\u7eed"}</small><strong>{companionDays}{"\u5929"}</strong></div>
+                  </div>
+                  <div className="product-bridge-grid">
+                    {PRODUCT_BRIDGES.map((bridge) => (
+                      <button className="product-bridge-card" key={bridge.label} type="button" onClick={() => openProductBridge(bridge)}>
+                        <span>{bridge.label}</span>
+                        <strong>{bridge.value}</strong>
+                        <small>{bridge.detail}</small>
+                      </button>
+                    ))}
+                  </div>
+                  <article className="home-task-card">
+                    <div className="home-task-card__head"><strong>{"\u5f53\u524d\u4efb\u52a1"}</strong><button type="button" onClick={addStudioTask}>+</button></div>
+                    <div className="home-task-input"><input value={studioTaskDraft} placeholder="点击 + 添加任务" onChange={(event) => setStudioTaskDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addStudioTask(); }} /></div>
+                    <div className="home-task-list">
+                      {studioTasks.length ? studioTasks.map((task) => (
+                        <div className={`home-task-item${task.done ? " is-done" : ""}`} key={task.id}>
+                          <button type="button" onClick={() => toggleStudioTask(task.id)}><span>{task.done ? "\u2713" : ""}</span>{task.title}</button>
+                          <button type="button" aria-label="Remove task" onClick={() => removeStudioTask(task.id)}>{"\u00d7"}</button>
+                        </div>
+                      )) : <p>{"\u70b9\u51fb + \u6dfb\u52a0\u4efb\u52a1"}</p>}
+                    </div>
+                  </article>
+                </div>
 
-          <section className="prefs__group">
-            <h2 className="prefs__group-title">{labels.appearance}</h2>
-            <Row
-              label={labels.petSize}
-              control={
-                <NumberControl
-                  value={Math.round(draft.petScale * 100)}
-                  min={30}
-                  max={150}
-                  unit="%"
-                  onChange={(value) => updateDraft({ petScale: value / 100 })}
-                />
-              }
-            />
-            <Row
-              label={labels.enableLyricsMode}
-              hint={labels.lyricsModeHelp}
-              control={
-                <ToggleControl
-                  checked={draft.lyricsModeEnabled}
-                  onChange={(lyricsModeEnabled) => updateDraft({ lyricsModeEnabled })}
-                  ariaLabel={labels.enableLyricsMode}
-                />
-              }
-            />
-            <Row
-              label={labels.petBubbleDuration}
-              control={
-                <NumberControl
-                  value={draft.petBubbleDurationSeconds}
-                  min={0.1}
-                  max={10}
-                  step={0.1}
-                  precision={1}
-                  unit={labels.secondUnit}
-                  onChange={(petBubbleDurationSeconds) => updateDraft({ petBubbleDurationSeconds })}
-                />
-              }
-            />
-        <div className="pref-block">
-            <span className="pref-block__label">{labels.petMotion}</span>
-            <Row
-              label={labels.enablePetRoam}
-              control={
-                <ToggleControl
-                  checked={draft.petRoamEnabled}
-                  onChange={(petRoamEnabled) => updateDraft({ petRoamEnabled })}
-                  ariaLabel={labels.enablePetRoam}
-                />
-              }
-            />
-            <Row
-              label={labels.petRoamDirection}
-              control={
-                <SelectControl
-                  value={draft.petRoamDirection}
-                  options={[
-                    { value: "both", label: labels.petRoamDirectionBoth },
-                    { value: "vertical", label: labels.petRoamDirectionVertical },
-                    { value: "diagonal", label: labels.petRoamDirectionDiagonal },
-                    { value: "all", label: labels.petRoamDirectionAll },
-                    { value: "left", label: labels.petRoamDirectionLeft },
-                    { value: "right", label: labels.petRoamDirectionRight }
-                  ]}
-                  onChange={(value) => updateDraft({ petRoamDirection: value as PetRoamDirection })}
-                />
-              }
-            />
-            <Row
-              label={labels.petRoamFrequency}
-              control={
-                <NumberControl
-                  value={draft.petRoamFrequencySeconds}
-                  min={5}
-                  max={180}
-                  unit={labels.secondUnit}
-                  onChange={(petRoamFrequencySeconds) => updateDraft({ petRoamFrequencySeconds })}
-                />
-              }
-            />
-            <Row
-              label={labels.petRoamDuration}
-              control={
-                <NumberControl
-                  value={draft.petRoamDurationSeconds}
-                  min={1}
-                  max={30}
-                  unit={labels.secondUnit}
-                  onChange={(petRoamDurationSeconds) => updateDraft({ petRoamDurationSeconds })}
-                />
-              }
-            />
-            <Row
-              label={labels.petIdleMotionFrequency}
-              control={
-                <NumberControl
-                  value={draft.petIdleMotionSeconds}
-                  min={1}
-                  max={12}
-                  unit={labels.secondUnit}
-                  onChange={(petIdleMotionSeconds) => updateDraft({ petIdleMotionSeconds })}
-                />
-              }
-            />
-          </div>
-        </section>
-
-      <section className="prefs__group">
-        <h2 className="prefs__group-title">{labels.reminders}</h2>
-        <Row
-          label={labels.enableBreakReminder}
-          control={
-            <ToggleControl
-              checked={draft.breakReminderEnabled}
-              onChange={(breakReminderEnabled) => updateDraft({ breakReminderEnabled })}
-              ariaLabel={labels.enableBreakReminder}
-            />
-          }
-        />
-        <Row
-          label={labels.breakInterval}
-          control={
-            <NumberControl
-              value={draft.breakIntervalMinutes}
-              min={1}
-              max={180}
-              unit={labels.minuteUnit}
-              onChange={(breakIntervalMinutes) => updateDraft({ breakIntervalMinutes })}
-            />
-          }
-        />
-        <Row
-          label={labels.enableScreenBlock}
-          control={
-            <ToggleControl
-              checked={draft.screenBlockReminderEnabled}
-              onChange={(screenBlockReminderEnabled) => updateDraft({ screenBlockReminderEnabled })}
-              ariaLabel={labels.enableScreenBlock}
-            />
-          }
-        />
-        <Row
-          label={labels.screenBlockDuration}
-          control={
-            <NumberControl
-              value={draft.screenBlockDurationSeconds}
-              min={15}
-              max={600}
-              unit={labels.secondUnit}
-              onChange={(screenBlockDurationSeconds) => updateDraft({ screenBlockDurationSeconds })}
-            />
-          }
-        />
-        <Row
-          label={labels.screenBlockCoverage}
-          control={
-            <NumberControl
-              value={Math.round(draft.screenBlockCoverageRatio * 100)}
-              min={35}
-              max={100}
-              unit="%"
-              onChange={(value) => updateDraft({ screenBlockCoverageRatio: value / 100 })}
-            />
-          }
-        />
-        <Row
-          label={labels.enableHydrationReminder}
-          control={
-            <ToggleControl
-              checked={draft.hydrationReminderEnabled}
-              onChange={(hydrationReminderEnabled) => updateDraft({ hydrationReminderEnabled })}
-              ariaLabel={labels.enableHydrationReminder}
-            />
-          }
-        />
-        <Row
-          label={labels.hydrationInterval}
-          control={
-            <NumberControl
-              value={draft.hydrationIntervalMinutes}
-              min={1}
-              max={240}
-              unit={labels.minuteUnit}
-              onChange={(hydrationIntervalMinutes) => updateDraft({ hydrationIntervalMinutes })}
-            />
-          }
-        />
-      </section>
-
-      <section className="prefs__group">
-        <h2 className="prefs__group-title">{labels.focus}</h2>
-        <Row
-          label={labels.focusDuration}
-          control={
-            <NumberControl
-              value={draft.focusDurationMinutes}
-              min={1}
-              max={120}
-              unit={labels.minuteUnit}
-              onChange={(focusDurationMinutes) => updateDraft({ focusDurationMinutes })}
-            />
-          }
-        />
-        <Row
-          label={labels.enableAgentActivity}
-          hint={labels.agentActivityHelp}
-          control={
-            <ToggleControl
-              checked={draft.agentActivityEnabled}
-              onChange={(agentActivityEnabled) => updateDraft({ agentActivityEnabled })}
-              ariaLabel={labels.enableAgentActivity}
-            />
-          }
-        />
-        <Row
-          label={labels.enableAgentCompletionSound}
-          control={
-            <ToggleControl
-              checked={draft.agentCompletionSoundEnabled}
-              onChange={(agentCompletionSoundEnabled) =>
-                updateDraft({ agentCompletionSoundEnabled })
-              }
-              ariaLabel={labels.enableAgentCompletionSound}
-            />
-          }
-        />
-        <Row
-          label={labels.enableDistractionDetection}
-          hint={
-            draft.distractionDetectionEnabled
-              ? labels.detectionFocusHelp
-              : labels.detectionOffHelp
-          }
-          control={
-            <ToggleControl
-              checked={draft.distractionDetectionEnabled}
-              onChange={(distractionDetectionEnabled) => updateDraft({ distractionDetectionEnabled })}
-              ariaLabel={labels.enableDistractionDetection}
-            />
-          }
-        />
-        {draft.distractionDetectionEnabled ? (
-          <>
-            <Row
-              label={labels.detectionGrace}
-              control={
-                <NumberControl
-                  value={draft.distractionGraceSeconds}
-                  min={0}
-                  max={120}
-                  unit={labels.secondUnit}
-                  onChange={(distractionGraceSeconds) => updateDraft({ distractionGraceSeconds })}
-                />
-              }
-            />
-            <Row
-              label={labels.blockedApps}
-              control={
-                <ChipsControl
-                  value={draft.distractionBlockedApps}
-                  labels={labels}
-                  onChange={(distractionBlockedApps) => updateDraft({ distractionBlockedApps })}
-                />
-              }
-            />
-            <Row
-              label={labels.blockedKeywords}
-              control={
-                <ChipsControl
-                  value={draft.distractionBlockedKeywords}
-                  labels={labels}
-                  onChange={(distractionBlockedKeywords) => updateDraft({ distractionBlockedKeywords })}
-                />
-              }
-            />
-          </>
-        ) : null}
-        <div className="prefs__inline-actions">
-          {snapshot.focusActive ? (
-            <button type="button" className="pref-button" onClick={window.mypets.stopFocus}>
-              {labels.stopFocus}
-            </button>
-          ) : (
-            <button type="button" className="pref-button is-primary" onClick={window.mypets.startFocus}>
-              {labels.startFocus}
-            </button>
-          )}
-        </div>
-      </section>
-
-      {!window.mypets.isPackaged && (
-        <section className="prefs__group">
-          <h2 className="prefs__group-title">{labels.testTools}</h2>
-          <div className="test-tools">
-            <DemoChip trigger="break" label={labels.demoBreak} />
-            <DemoChip trigger="hydration" label={labels.demoWater} />
-            <DemoChip trigger="focusWarning" label={labels.demoFocusWarning} />
-            <DemoChip trigger="happy" label={labels.demoHappy} />
-            <button type="button" className="pref-chip-button" onClick={window.mypets.resetToday}>
-              {labels.resetToday}
-            </button>
-          </div>
-        </section>
-      )}
-
-      <section className="prefs__group prefs__group--quiet">
-        <button
-          type="button"
-          className="prefs__disclosure"
-          onClick={() => setDiagnosticsOpen((open) => !open)}
-          aria-expanded={diagnosticsOpen}
-        >
-          <span>{labels.diagnostics}</span>
-          <span className="prefs__disclosure-caret">{diagnosticsOpen ? "v" : ">"}</span>
-        </button>
-        {diagnosticsOpen ? (
-          <div className="prefs__diag">
-            <DiagGroup title={labels.runtime}>
-              <DiagCard label={labels.state} value={snapshot.petState} />
-              <DiagCard
-                label={labels.mode}
-                value={
-                  snapshot.focusActive
-                    ? labels.focus
-                    : labels.idle
-                }
-              />
-              <DiagCard label={labels.reminder} value={snapshot.blockingMode ?? labels.none} />
-              <DiagCard
-                label={labels.dog}
-                value={snapshot.dogVisible ? labels.visible : labels.hidden}
-              />
-            </DiagGroup>
-
-            <DiagGroup title={labels.distraction}>
-              <DiagCard
-                label={labels.status}
-                value={formatDistractionState(snapshot.distraction.state, labels)}
-              />
-              <DiagCard
-                label={labels.matched}
-                value={snapshot.distraction.matchedRule ?? labels.none}
-              />
-              <DiagCard
-                label={labels.app}
-                value={snapshot.distraction.activeApp || labels.none}
-              />
-              <DiagCard
-                label={labels.checked}
-                value={formatTimestamp(snapshot.distraction.lastCheckedAt, language, labels)}
-              />
-            </DiagGroup>
-
-            {snapshot.distraction.activeWindowTitle ? (
-              <p className="prefs__diag-note">{snapshot.distraction.activeWindowTitle}</p>
+                <article className="home-chat-card">
+                  <header><strong>{"\u25cc \u548c"}{petName}{"\u804a\u804a"}</strong><span>{"AI \u95ee\u7b54 \u00b7 \u968f\u95ee\u968f\u7b54"}</span></header>
+                  <div className="home-chat-log">
+                    {studioChatMessages.map((message, index) => (
+                      <div className={`home-chat-line ${message.role}`} key={`${message.role}-${index}`}>
+                        {message.role === "pet" ? <span className="home-chat-avatar"><PetAssetPreview asset={activePetAsset} /></span> : null}
+                        <div><p>{message.text}</p><small>{message.ts}</small></div>
+                      </div>
+                    ))}
+                    {studioChatSending ? <div className="home-chat-line pet"><span className="home-chat-avatar"><PetAssetPreview asset={activePetAsset} /></span><div><p>{"\u6b63\u5728\u60f3\u4e00\u60f3..."}</p></div></div> : null}
+                  </div>
+                  <div className="home-chat-chips">
+                    {["\u4eca\u5929\u5929\u6c14", "\u611f\u89c9\u6709\u70b9\u7d2f", "\u5e2e\u6211\u4e13\u6ce8", "\u9700\u8981\u5e2e\u52a9"].map((chip) => <button key={chip} type="button" onClick={() => void sendStudioChat(chip)}>{chip}</button>)}
+                  </div>
+                  <form className="home-chat-form" onSubmit={(event) => { event.preventDefault(); void sendStudioChat(); }}>
+                    <input value={studioChatDraft} placeholder={`\u95ee\u95ee${petName}...`} disabled={studioChatSending} onChange={(event) => setStudioChatDraft(event.target.value)} />
+                    <button type="submit" disabled={studioChatSending || !studioChatDraft.trim()}>{"\u2197"}</button>
+                  </form>
+                </article>
+              </section>
             ) : null}
-            <p className="prefs__diag-hint">{distractionHelp(snapshot, labels)}</p>
 
-            <DiagGroup title={labels.timers}>
-              <DiagCard
-                label={labels.break}
-                value={formatTimer(snapshot.timers.breakDueAt, now, language, labels)}
-              />
-              <DiagCard
-                label={labels.water}
-                value={formatTimer(snapshot.timers.hydrationDueAt, now, language, labels)}
-              />
-              <DiagCard
-                label={labels.focusEnd}
-                value={formatTimer(snapshot.timers.focusEndsAt, now, language, labels)}
-              />
-              <DiagCard
-                label={labels.updated}
-                value={new Intl.DateTimeFormat(localeFor(language), {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                }).format(now)}
-              />
-            </DiagGroup>
+            {page === "focus" ? (
+              <section className="studio-focus-page">
+                <div className="focus-left-panel">
+                  <input className="focus-goal-input" placeholder="今天要专注做什么？" value={studioTaskDraft} onChange={(event) => setStudioTaskDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addStudioTask(); }} />
+                  <div className="focus-ring" style={{ "--focus-progress": focusProgress } as CSSProperties}><div><span>{"\u4e13\u6ce8"}</span><strong>{focusClock}</strong><small>{"\u7b2c "}{Math.max(1, focusCycles + 1)}{" \u8f6e"}</small></div></div>
+                  <div className="focus-controls"><button type="button" title="Reset" onClick={window.mypets.stopFocus}>{"\u21ba"}</button><button type="button" className="focus-controls__primary" onClick={snapshot.focusActive ? window.mypets.stopFocus : window.mypets.startFocus}>{snapshot.focusActive ? "\u2161" : "\u25b7"}</button><button type="button" title="Sound" onClick={toggleCompletionSound}>{draft.agentCompletionSoundEnabled ? "\u266a" : "\u266b"}</button></div>
+                  <button type="button" className="focus-immersive" onClick={startImmersiveFocus}>{"\u2727 \u8fdb\u5165\u6c89\u6d78\u6a21\u5f0f"}</button>
+                </div>
+                <div className="focus-settings-panel">
+                  <h2>{"\u65f6\u957f\u8bbe\u7f6e"}</h2>
+                  <div className="focus-setting-card"><div><strong>{"\u4e13\u6ce8\u65f6\u957f"}</strong><span>{"5-60 \u5206\u949f"}</span></div><NumberControl value={draft.focusDurationMinutes} min={5} max={60} unit="" onChange={(focusDurationMinutes) => updateDraft({ focusDurationMinutes })} /></div>
+                  <div className="focus-setting-card"><div><strong>{"\u77ed\u4f11\u606f"}</strong><span>{"5-30 \u5206\u949f"}</span></div><NumberControl value={Math.round(draft.screenBlockDurationSeconds / 60)} min={5} max={30} unit="" onChange={(value) => updateDraft({ screenBlockDurationSeconds: value * 60 })} /></div>
+                  <h2>{"\u63d0\u9192\u8bbe\u7f6e"}</h2>
+                  <div className="focus-toggle-card"><div><strong>{"\u4e13\u6ce8\u5f00\u59cb\u63d0\u9192"}</strong><span>{"\u5f00\u59cb\u8ba1\u65f6\u65f6\u901a\u77e5"}</span></div><ToggleControl checked={draft.agentCompletionSoundEnabled} onChange={(agentCompletionSoundEnabled) => updateDraft({ agentCompletionSoundEnabled })} ariaLabel="focus start" /></div>
+                  <div className="focus-toggle-card"><div><strong>{"\u4f11\u606f\u5230\u70b9\u63d0\u9192"}</strong><span>{"\u8be5\u4f11\u606f\u65f6\u63a8\u9001\u6c14\u6ce1"}</span></div><ToggleControl checked={draft.breakReminderEnabled} onChange={(breakReminderEnabled) => updateDraft({ breakReminderEnabled })} ariaLabel="break reminder" /></div>
+                  <div className="focus-toggle-card"><div><strong>{"\u559d\u6c34\u63d0\u9192"}</strong><span>{"\u6bcf\u5c0f\u65f6\u6e29\u67d4\u63d0\u9192\u4e00\u6b21"}</span></div><ToggleControl checked={draft.hydrationReminderEnabled} onChange={(hydrationReminderEnabled) => updateDraft({ hydrationReminderEnabled })} ariaLabel="water reminder" /></div>
+                  <div className="focus-progress-card"><div><strong>{"\u4eca\u65e5\u5faa\u73af\u8fdb\u5ea6"}</strong><span>{focusCycles}/4</span></div><div>{[0, 1, 2, 3].map((item) => <i key={item} className={item < focusCycles ? "is-on" : ""} />)}</div></div>
+                </div>
+              </section>
+            ) : null}
+
+            {page === "pets" ? (
+              <section className="studio-characters-page">
+                <div className="studio-page-heading"><h2>{"\u9009\u62e9\u4f60\u7684\u5ba0\u7269\u89d2\u8272"}</h2><p>{"\u6bcf\u4e2a\u89d2\u8272\u90fd\u6709\u72ec\u7279\u7684\u966a\u4f34\u65b9\u5f0f\uff0c\u9009\u4e00\u4e2a\u6700\u5bf9\u4f60\u5fc3\u610f\u7684\u5427"}</p></div>
+                <article className="character-feature-card"><div className="character-feature-card__preview"><PetAssetPreview asset={activePetAsset} /></div><div><span>{"\u6e29\u67d4\u7cfb"}</span><h3>{petName} <small>{activePet?.slug ?? "Mochi"}</small></h3><p>{activePet?.manifest.description ?? "\u84ec\u677e\u7684\u684c\u9762\u5c0f\u4f19\u4f34\uff0c\u4f1a\u966a\u4f60\u8bfb\u4e66\u3001\u4e13\u6ce8\u548c\u804a\u5929\u3002"}</p></div><strong>{"\u2713"}</strong></article>
+                <div className="character-grid">{selectablePets.map((pet) => <PetCard key={pet.slug} pet={pet} label={pet.manifest.displayName} selected={draft.selectedPetId === pet.slug} onSelect={() => updateDraft({ selectedPetId: pet.slug })} />)}</div>
+                <div className="character-actions"><button type="button" onClick={() => void importPet()}>{"\u5bfc\u5165\u89d2\u8272\u5305"}</button><button type="button" onClick={() => window.mypets.openExternal(PETDEX_URL)}>Petdex</button><span>{importStatus ?? "\u4e0a\u65b9\u662f\u5df2\u5b89\u88c5\u7684\u771f\u5b9e\u684c\u5ba0\uff0c\u9009\u62e9\u540e\u4f1a\u7acb\u5373\u5e94\u7528\u5230\u684c\u9762\u5ba0\u7269\u3002"}</span></div>
+                <article className="figma-character-panel">
+                  <div className="pref-block__head">
+                    <div>
+                      <strong>{"Figma Make \u89d2\u8272\u7075\u611f"}</strong>
+                      <p>{"\u4fdd\u6301\u65b0\u7248 UI/UX \u7684\u56fe\u7247\u89d2\u8272\u5361\u7247\u6837\u5f0f\uff1b\u70b9\u51fb\u5361\u7247\u4f1a\u53bb Petdex \u641c\u7d22\u5bf9\u5e94\u89d2\u8272\uff0c\u4e0b\u8f7d\u540e\u518d\u5bfc\u5165\u6210\u771f\u5b9e\u684c\u5ba0\u3002"}</p>
+                    </div>
+                  </div>
+                  <div className="figma-character-grid">
+                    {FIGMA_CHARACTERS.map((character) => <FigmaCharacterCard key={character.id} character={character} />)}
+                  </div>
+                </article>
+                <article className="petdex-showcase">
+                  <div className="pref-block__head">
+                    <div><strong>{"Petdex \u89d2\u8272\u7075\u611f"}</strong><p>{"\u4fdd\u7559\u5916\u90e8\u89d2\u8272\u641c\u7d22\u5165\u53e3\uff0c\u4e0d\u628a\u53d7\u7248\u6743\u7d20\u6750\u6253\u5305\u8fdb\u5e94\u7528\u3002"}</p></div>
+                  </div>
+                  <div className="petdex-grid">
+                    {PETDEX_RECOMMENDATIONS.map((pick) => <PetdexPickCard key={pick.name} pick={pick} />)}
+                  </div>
+                </article>
+                <article className="character-gif-panel"><div className="character-gif-panel__head"><div><strong>{"\u81ea\u5b9a\u4e49 GIF \u52a8\u4f5c"}</strong><p>{"\u4e3a\u5f85\u673a\u3001\u79fb\u52a8\u3001\u601d\u8003\u3001\u5931\u8d25\u7b49\u72b6\u6001\u4e0a\u4f20\u4e0d\u540c GIF\uff0c\u539f\u684c\u5ba0\u5f62\u8c61\u529f\u80fd\u4fdd\u7559\u3002"}</p></div><ToggleControl checked={draft.customGifPet.enabled} onChange={(enabled) => updateDraft({ customGifPet: { ...draft.customGifPet, enabled } })} ariaLabel="custom gif" /></div><div className="character-gif-grid">{CUSTOM_GIF_STATES.map((entry) => <CustomGifActionCard key={entry.state} entry={entry} gifPath={draft.customGifPet.gifs[entry.state]} enabled={draft.customGifPet.enabled} onImport={() => void importCustomGif(entry.state)} onRemove={() => removeCustomGif(entry.state)} />)}</div></article>
+              </section>
+            ) : null}
+
+            {page === "stats" ? (
+              <section className="studio-stats-page">
+                <SegmentedControl
+                  value={statsRange}
+                  options={[
+                    { value: "day", label: "\u4eca\u65e5" },
+                    { value: "month", label: "\u672c\u6708" },
+                    { value: "all", label: "\u5168\u90e8" }
+                  ]}
+                  onChange={setStatsRange}
+                />
+                <button type="button" className="pref-button" onClick={() => window.mypets.resetToday()}>{"\u91cd\u7f6e\u4eca\u65e5\u7edf\u8ba1"}</button>
+                <div className="stats-rings-card">{[{ label: "\u4e13\u6ce8", value: statsForRange.focusMinutes, unit: "\u5206\u949f", pct: focusPercent, color: "#f571ad", icon: "\u2699" }, { label: "\u559d\u6c34", value: statsForRange.watersLogged, unit: "\u676f", pct: waterPercent, color: "#55c9a6", icon: "\u2667" }, { label: "\u4f11\u606f", value: statsForRange.breaksTaken * 20, unit: "\u5206\u949f", pct: breakPercent, color: "#ff9278", icon: "\u25d2" }].map((item) => <div className="stats-ring-item" key={item.label} style={{ "--ring-color": item.color, "--ring-pct": `${item.pct}%` } as CSSProperties}><div><span>{item.icon}</span><strong>{item.value}</strong><small>{item.unit}</small></div><b>{item.label}</b><em>{item.pct}% {"\u5b8c\u6210"}</em></div>)}</div>
+                <div className="stats-summary-grid"><article><span>{"\u2699"}</span><div><small>{labels.focus}</small><strong>{statsForRange.focusMinutes}<em>{"\u5206\u949f"}</em></strong><p>{`${focusPercent}% \u5b8c\u6210`}</p></div></article><article><span>{"\u2667"}</span><div><small>{"\u559d\u6c34\u603b\u91cf"}</small><strong>{statsForRange.watersLogged}<em>{"\u676f"}</em></strong><p>{"\u5b8c\u6210\u7387 "}{waterPercent}%</p></div></article><article><span>{"\u25d2"}</span><div><small>{"\u4f11\u606f\u6b21\u6570"}</small><strong>{statsForRange.breaksTaken}<em>{"\u6b21"}</em></strong><p>{`${breakPercent}% \u5b8c\u6210`}</p></div></article><article><span>{"\u25b2"}</span><div><small>{"\u5f53\u524d\u8fde\u7eed\u5929\u6570"}</small><strong>{companionDays}<em>{"\u5929"}</em></strong><p>{"\u672c\u5730\u7edf\u8ba1"}</p></div></article></div>
+                <StatsLineChart title={labels.focus} unit={labels.minuteUnit} points={trendPoints} metric="focusMinutes" />
+                <StatsCompanionship days={companionDays} weeks={focusHeatmapWeeks} monthMarkers={monthMarkers} labels={labels} language={language} />
+              </section>
+            ) : null}
+
+            {page === "settings" ? (
+              <section className="studio-settings-page">
+                <div className="studio-page-heading"><h2>{"\u504f\u597d\u8bbe\u7f6e"}</h2><p>{"\u4e2a\u6027\u5316\u4f60\u7684 MyPets \u4f53\u9a8c"}</p></div>
+                <div className="settings-quick-grid"><div><strong>{"\u5ba0\u7269\u5927\u5c0f"}</strong><NumberControl value={Math.round(draft.petScale * 100)} min={30} max={150} unit="%" onChange={(value) => updateDraft({ petScale: value / 100 })} /></div><div><strong>{"\u6c14\u6ce1\u505c\u7559"}</strong><NumberControl value={draft.petBubbleDurationSeconds} min={0.1} max={10} step={0.1} precision={1} unit="秒" onChange={(petBubbleDurationSeconds) => updateDraft({ petBubbleDurationSeconds })} /></div><div><strong>{"\u684c\u5ba0\u6f2b\u6e38"}</strong><ToggleControl checked={draft.petRoamEnabled} onChange={(petRoamEnabled) => updateDraft({ petRoamEnabled })} ariaLabel="roam" /></div><div><strong>{"\u5206\u5fc3\u68c0\u6d4b"}</strong><ToggleControl checked={draft.distractionDetectionEnabled} onChange={(distractionDetectionEnabled) => updateDraft({ distractionDetectionEnabled })} ariaLabel="distraction" /></div></div>
+                <div className="settings-list-card">
+                  <Row label={labels.language} control={<SelectControl value={draft.language} options={LANGUAGE_OPTIONS} onChange={(language) => updateDraft({ language: language as Settings["language"] })} />} />
+                  <Row label={labels.petRoamDirection} control={<SelectControl value={draft.petRoamDirection} options={[{ value: "both", label: labels.petRoamDirectionBoth }, { value: "vertical", label: labels.petRoamDirectionVertical }, { value: "diagonal", label: labels.petRoamDirectionDiagonal }, { value: "all", label: labels.petRoamDirectionAll }, { value: "left", label: labels.petRoamDirectionLeft }, { value: "right", label: labels.petRoamDirectionRight }]} onChange={(petRoamDirection) => updateDraft({ petRoamDirection: petRoamDirection as PetRoamDirection })} />} />
+                  <Row label={labels.enableAgentActivity} hint={labels.agentActivityHelp} control={<ToggleControl checked={draft.agentActivityEnabled} onChange={(agentActivityEnabled) => updateDraft({ agentActivityEnabled })} ariaLabel={labels.enableAgentActivity} />} />
+                  <Row label={labels.blockedApps} control={<ChipsControl value={draft.distractionBlockedApps} onChange={(distractionBlockedApps) => updateDraft({ distractionBlockedApps })} labels={labels} />} />
+                  <Row label={labels.blockedKeywords} control={<ChipsControl value={draft.distractionBlockedKeywords} onChange={(distractionBlockedKeywords) => updateDraft({ distractionBlockedKeywords })} labels={labels} />} />
+                </div>
+                <article className="character-gif-panel">
+                  <div className="character-gif-panel__head"><div><strong>{labels.reminderPageTitle}</strong><p>{labels.importPetHint}</p></div></div>
+                  <div className="home-task-input">
+                    <input value={newReminderTitle} placeholder={labels.reminderTitlePlaceholder} onChange={(event) => setNewReminderTitle(event.target.value)} />
+                    <input type="time" value={newReminderTime} onChange={(event) => setNewReminderTime(event.target.value)} />
+                    <button type="button" className="pref-button is-primary" onClick={addCustomReminder}>{labels.addReminder}</button>
+                  </div>
+                  <div className="home-task-list">
+                    {draft.customReminders.length ? draft.customReminders.map((reminder) => (
+                      <ReminderCard key={reminder.id} reminder={reminder} labels={labels} language={language} now={now} onChange={(partial) => updateReminder(reminder.id, partial)} onRemove={() => removeCustomReminder(reminder.id)} />
+                    )) : <p>{labels.emptyReminders}</p>}
+                  </div>
+                </article>
+                <button type="button" className="prefs__disclosure" onClick={() => setDiagnosticsOpen((open) => !open)}>
+                  <span>{labels.diagnostics}</span>
+                  <span className="prefs__disclosure-caret">{diagnosticsOpen ? "\u2212" : "+"}</span>
+                </button>
+                {diagnosticsOpen ? (
+                  <div className="prefs__diag">
+                    <DiagGroup title={labels.distraction}>
+                      <DiagCard label={labels.status} value={formatDistractionState(snapshot.distraction.state, labels)} />
+                      <DiagCard label={labels.app} value={snapshot.distraction.activeApp || "-"} />
+                      <DiagCard label={labels.matched} value={snapshot.distraction.matchedRule || "-"} />
+                      <DiagCard label={labels.checked} value={formatTimestamp(snapshot.distraction.lastCheckedAt, language, labels)} />
+                    </DiagGroup>
+                    <p className="prefs__diag-hint">{distractionHelp(snapshot, labels)}</p>
+                  </div>
+                ) : null}
+                <div className="settings-tip">{"\u5feb\u6377\u64cd\u4f5c\uff1a\u4e13\u6ce8\u6a21\u5f0f\u4e0b\u53ef\u5c06\u5ba0\u7269\u62d6\u5230\u5c4f\u5e55\u8fb9\u7f18\u534a\u9690\u85cf\uff0c\u70b9\u51fb\u4e00\u4e0b\u5373\u53ef\u547c\u51fa\u3002"}</div>
+              </section>
+            ) : null}
           </div>
-        ) : null}
-      </section>
-
-        </>
-      ) : null}
+        </section>
+      </div>
     </main>
   );
 }
@@ -1556,7 +1353,7 @@ function ReminderCard({
           aria-label={labels.removeReminder(reminder.title)}
           onClick={onRemove}
         >
-          脳
+          &times;
         </button>
       </div>
     </article>
@@ -1592,15 +1389,105 @@ function CustomGifActionCard({
       </div>
       <div className="custom-gif-card__actions">
         <button type="button" className="pref-chip-button" onClick={onImport}>
-          {gifPath ? "更换" : "上传"}
+          {gifPath ? "\u66f4\u6362" : "\u4e0a\u4f20"}
         </button>
         {gifPath ? (
           <button type="button" className="pref-chip-button" onClick={onRemove}>
-            移除
+            {"\u79fb\u9664"}
           </button>
         ) : null}
       </div>
     </article>
+  );
+}
+
+function PetdexPickCard({
+  pick
+}: {
+  pick: { name: string; tone: string; query: string; color: string };
+}): JSX.Element {
+  const searchUrl = `${PETDEX_URL}?q=${encodeURIComponent(pick.query)}`;
+  return (
+    <article className="petdex-pick" style={{ "--pick-color": pick.color } as CSSProperties}>
+      <div className="petdex-pick__orb" aria-hidden="true">
+        {pick.name.slice(0, 2)}
+      </div>
+      <div>
+        <strong>{pick.name}</strong>
+        <span>{pick.tone}</span>
+      </div>
+      <button
+        type="button"
+        className="pref-chip-button"
+        onClick={() => window.mypets.openExternal(searchUrl)}
+      >
+        {"\u641c\u7d22"}
+      </button>
+    </article>
+  );
+}
+
+function FigmaCharacterCard({
+  character
+}: {
+  character: (typeof FIGMA_CHARACTERS)[number];
+}): JSX.Element {
+  const searchUrl = `${PETDEX_URL}?q=${encodeURIComponent(character.query)}`;
+  return (
+    <button
+      type="button"
+      className="figma-character-card"
+      style={{ "--character-color": character.color, "--character-bg": character.bg } as CSSProperties}
+      onClick={() => window.mypets.openExternal(searchUrl)}
+      title={`${character.name} ${character.title}`}
+    >
+      <span className="figma-character-card__image">
+        <img src={character.imageUrl} alt={character.name} draggable={false} />
+      </span>
+      <span className="figma-character-card__body">
+        <strong>{character.name}</strong>
+        <small>{character.tag}</small>
+        <em>{character.title}</em>
+        <span>{character.description}</span>
+      </span>
+    </button>
+  );
+}
+
+function PetAssetPreview({ asset }: { asset: ReturnType<typeof getSelectedPetAsset> }): JSX.Element {
+  if (asset.kind === "sprite") {
+    return (
+      <span
+        className="sprite-pet sprite-pet--preview"
+        style={
+          {
+            "--sprite-url": `url(${asset.src})`,
+            "--sprite-row": asset.animation.row,
+            "--sprite-frames": asset.animation.frames,
+            "--sprite-duration": `${asset.animation.durationMs}ms`,
+            "--sprite-frame-width": `${asset.frameWidth}px`,
+            "--sprite-frame-height": `${asset.frameHeight}px`,
+            "--sprite-sheet-width": `${asset.sheetWidth}px`,
+            "--sprite-sheet-height": `${asset.sheetHeight}px`
+          } as CSSProperties
+        }
+      />
+    );
+  }
+  if (asset.kind === "gif") {
+    return <img className="gif-pet gif-pet--preview" src={asset.src} alt="" draggable={false} />;
+  }
+  return (
+    <span className="fallback-pet fallback-pet--preview" aria-hidden="true">
+      <span className="fallback-pet__ear fallback-pet__ear--left" />
+      <span className="fallback-pet__ear fallback-pet__ear--right" />
+      <span className="fallback-pet__face">
+        <span className="fallback-pet__eye fallback-pet__eye--left" />
+        <span className="fallback-pet__eye fallback-pet__eye--right" />
+        <span className="fallback-pet__nose" />
+      </span>
+      <span className="fallback-pet__tail" />
+    </span>
   );
 }
 

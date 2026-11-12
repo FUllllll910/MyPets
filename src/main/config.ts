@@ -18,8 +18,10 @@ export const SCREEN_BLOCK_WINDOW = {
 } as const;
 
 export const SETTINGS_WINDOW = {
-  width: 760,
-  height: 680
+  width: 900,
+  height: 640,
+  minWidth: 860,
+  minHeight: 580
 } as const;
 
 export const PRELOAD_PATH = join(__dirname, "../preload/index.cjs");

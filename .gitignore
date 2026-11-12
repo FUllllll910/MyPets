@@ -33,3 +33,9 @@ landing/.vercel/
 landing/next-env.d.ts
 landing/*.tsbuildinfo
 landing/.env*
+
+.env
+.env.*
+!.env.example
+dist-mac/
+*profile*/
